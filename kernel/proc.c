@@ -34,14 +34,18 @@ procinit(void)
       // Allocate a page for the process's kernel stack.
       // Map it high in memory, followed by an invalid
       // guard page.
+      
+      /** comment it, do this when alloc process in the future
+
       char *pa = kalloc();
       if(pa == 0)
         panic("kalloc");
       uint64 va = KSTACK((int) (p - proc));
       kvmmap(va, (uint64)pa, PGSIZE, PTE_R | PTE_W);
       p->kstack = va;
+      **/
   }
-  kvminithart();
+  // kvminithart();
 }
 
 // Must be called with interrupts disabled,
@@ -120,6 +124,23 @@ found:
     release(&p->lock);
     return 0;
   }
+  
+  // Allocate and init per process kernel pagetable
+  if((p->kernel_pagetable = (pagetable_t) kalloc()) == 0){
+    freeproc(p);
+    release(&p->lock);
+    return 0;
+  }
+  vminit(p->kernel_pagetable);
+
+  char *pa = kalloc();
+  if(pa == 0)
+    panic("kalloc");
+  uint64 va = KSTACK((int) (p - proc));
+  vmmap(va, (uint64)pa, PGSIZE, PTE_R | PTE_W, p->kernel_pagetable);
+  p->kstack = va;
+  
+  // vmmap(p->kstack, kwalkaddr(p->kstack), PGSIZE, PTE_R | PTE_W, p->kernel_pagetable);
 
   // Set up new context to start executing at forkret,
   // which returns to user space.
@@ -149,6 +170,14 @@ freeproc(struct proc *p)
   p->chan = 0;
   p->killed = 0;
   p->xstate = 0;
+  
+  uint64 kstack_pa = vmpa(p->kstack, p->kernel_pagetable);
+  kfree((void*)kstack_pa);
+  p->kstack = 0;
+
+  freewalk_pagetable(p->kernel_pagetable);
+  p->kernel_pagetable = 0;
+
   p->state = UNUSED;
 }
 
@@ -473,12 +502,13 @@ scheduler(void)
         // before jumping back to us.
         p->state = RUNNING;
         c->proc = p;
+        vminithart(p->kernel_pagetable);
         swtch(&c->context, &p->context);
 
         // Process is done running for now.
         // It should have changed its p->state before coming back.
         c->proc = 0;
-
+        kvminithart(); // switch back to kernel pagetable
         found = 1;
       }
       release(&p->lock);
