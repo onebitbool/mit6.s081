@@ -139,8 +139,6 @@ found:
   uint64 va = KSTACK((int) (p - proc));
   vmmap(va, (uint64)pa, PGSIZE, PTE_R | PTE_W, p->kernel_pagetable);
   p->kstack = va;
-  
-  // vmmap(p->kstack, kwalkaddr(p->kstack), PGSIZE, PTE_R | PTE_W, p->kernel_pagetable);
 
   // Set up new context to start executing at forkret,
   // which returns to user space.
@@ -171,10 +169,12 @@ freeproc(struct proc *p)
   p->killed = 0;
   p->xstate = 0;
   
+  // free kstack
   uint64 kstack_pa = vmpa(p->kstack, p->kernel_pagetable);
   kfree((void*)kstack_pa);
   p->kstack = 0;
 
+  // free pagetable **without free its pte physical memory**
   freewalk_pagetable(p->kernel_pagetable);
   p->kernel_pagetable = 0;
 
