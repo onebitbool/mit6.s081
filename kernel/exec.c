@@ -8,7 +8,6 @@
 #include "elf.h"
 
 static int loadseg(pde_t *pgdir, uint64 addr, struct inode *ip, uint offset, uint sz);
-
 int
 exec(char *path, char **argv)
 {
@@ -115,6 +114,11 @@ exec(char *path, char **argv)
   p->trapframe->epc = elf.entry;  // initial program counter = main
   p->trapframe->sp = sp; // initial stack pointer
   proc_freepagetable(oldpagetable, oldsz);
+  
+  // Update kernel_pagetable
+  uvmunmap(p->kernel_pagetable, 0, PGROUNDUP(oldsz) / PGSIZE, 0);
+  if(uvmcopy_pages(p->pagetable, p->kernel_pagetable, 0, sz) < 0)
+    goto bad;
 
   if(p->pid==1)
     vmprint(p->pagetable);
